@@ -8,28 +8,29 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 )
 
 var (
 	target string // 目标域名
-	port   int    // 代理端口
+	listen string // 监听端口
 	// httpProxy = "http://127.0.0.1:10809" // 本地代理地址和端口
 )
 
 func main() {
 	// 从命令行参数获取配置文件路径
-	flag.StringVar(&target, "domain", "https://api.openai.com", "The target domain to proxy.")
-	flag.IntVar(&port, "port", 9000, "The proxy port.")
+	flag.StringVar(&target, "target", envOr("OPENAI_PROXY_TARGET", "https://api.openai.com"),
+		"The target domain to proxy.")
+	flag.StringVar(&listen, "listen", envOr("OPENAI_PROXY_LISTEN", ":9000"),
+		"The proxy listen address.")
 	flag.Parse()
 
 	// 打印配置信息
 	log.Println("Target domain: ", target)
-	log.Println("Proxy port: ", port)
+	log.Println("Proxy listen: ", listen)
 
 	http.HandleFunc("/", handleRequest)
-	http.ListenAndServe(":"+strconv.Itoa(port), nil)
+	http.ListenAndServe(listen, nil)
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
@@ -114,19 +115,28 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// 将响应实体写入到响应流中（支持流式响应）
 	buf := make([]byte, 1024)
 	for {
-		if n, err := resp.Body.Read(buf); err == io.EOF || n == 0 {
+		n, err := resp.Body.Read(buf)
+		if err == io.EOF || n == 0 {
 			return
-		} else if err != nil {
+		}
+		if err != nil {
 			log.Println("error while reading respbody: ", err.Error())
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
-		} else {
-			if _, err = w.Write(buf[:n]); err != nil {
-				log.Println("error while writing resp: ", err.Error())
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.(http.Flusher).Flush()
 		}
+
+		if _, err = w.Write(buf[:n]); err != nil {
+			log.Println("error while writing resp: ", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.(http.Flusher).Flush()
 	}
+}
+
+func envOr(key, fallback string) string {
+	if s, ok := os.LookupEnv(key); ok && len(s) > 0 {
+		return s
+	}
+	return fallback
 }
