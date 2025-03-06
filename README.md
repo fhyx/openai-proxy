@@ -4,15 +4,36 @@
 
 > 想要快速体验，将 OpenAI API 调用域名从默认的 `api.openai.com` 调整为 `proxy.geekai.co` 即可。你可以在这里预览演示效果：[演示应用](https://geekai.co/dati?invite_code=S564yq)。
 
+### 编译
+
+```bash
+make
+```
+或
+```bash
+make dist/linux_amd64/openai-proxy
+```
+
 ### 切换到 Azure OpenAI
 
 默认在 9000 端口代理 OpenAI API，要想切换到 Azure OpenAI API，可以在 `scf_bootstrap` 的启动命令中添加域名参数来指定你的 Azure OpenAI API Endpoint:
 
 ```bash
-./main -domain=your-azure-openai-endpoint
+./dist/linux_amd64/openai-proxy -target=your-azure-openai-endpoint
 ```
 
-如果 9000 端口被占用，可以通过 `-post=9001` 指定其他端口。
+如果 9000 端口被占用，可以通过 `-listen=:9001` 指定其他端口。
+
+### 也可使用环境变量来设定参数
+
+```plain
+OPENAI_PROXY_LISTEN=:9000
+OPENAI_PROXY_TARGET=https://api.openai.com
+```
+
+```bash
+OPENAI_PROXY_LISTEN=:1234 ./openai-proxy
+```
 
 ### 代理任意全球域名
 
