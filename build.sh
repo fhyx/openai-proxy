@@ -1,3 +1,3 @@
-GOOS=linux GOARCH=amd64 go build -o main main.go
-zip main.zip main scf_bootstrap
+GOOS=linux GOARCH=amd64 go build -o openai-proxy main.go
+zip openai-proxy.zip openai-proxy scf_bootstrap
 

@@ -4,16 +4,6 @@
 
 > 想要快速体验，将 OpenAI API 调用域名从默认的 `api.openai.com` 调整为 `proxy.geekai.co` 即可。你可以在这里预览演示效果：[演示应用](https://geekai.co/dati?invite_code=S564yq)。
 
-### 编译
-
-```bash
-make
-```
-或
-```bash
-make dist/linux_amd64/openai-proxy
-```
-
 ### 切换到 Azure OpenAI
 
 默认在 9000 端口代理 OpenAI API，要想切换到 Azure OpenAI API，可以在 `scf_bootstrap` 的启动命令中添加域名参数来指定你的 Azure OpenAI API Endpoint:
@@ -43,7 +33,18 @@ OPENAI_PROXY_LISTEN=:1234 ./openai-proxy
 req.Header.Set("x-target-host", "api.open.ai")
 ```
 
-### 编译打包
+### 手动编译
+
+编译成本地版
+```bash
+make
+```
+或直接编译成Linux版
+```bash
+make dist/linux_amd64/openai-proxy
+```
+
+### 编译打包（限Linux）
 
 你可以修改源代码调整代理逻辑，然后编译打包进行部署：
 
@@ -51,7 +52,7 @@ req.Header.Set("x-target-host", "api.open.ai")
 ./build.sh
 ```
 
-此命令需要本地安装[go开发环境](https://go.dev/)，如果不想本地安装 go 环境进行编译打包，可以直接下载根据最新源代码编译打包好的 `main.zip`：[Releases](https://github.com/geekr-dev/openai-proxy/releases)
+此命令需要本地安装[go开发环境](https://go.dev/)，如果不想本地安装 go 环境进行编译打包，可以直接下载根据最新源代码编译打包好的 `openai-proxy.zip`：[Releases](https://github.com/geekr-dev/openai-proxy/releases)
 
 ### 部署测试
 
