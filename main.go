@@ -18,7 +18,9 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	Target    string // 目标域名
+	// Targets holds the mapping of proxy keys to target domains
+	// Format: key1:domain1.com,key2:domain2.com (https:// prefix is added automatically)
+	Targets   map[string]string
 	Listen    string // 监听端口
 	LocalEnv  bool   // 是否本地环境
 	HttpProxy string // 本地代理地址和端口
@@ -63,7 +65,7 @@ func NewProxy(config Config) *Proxy {
 
 // Start starts the proxy server
 func (p *Proxy) Start() error {
-	p.logger.Printf("Starting proxy server on %s, targeting %s", p.config.Listen, p.config.Target)
+	p.logger.Printf("Starting proxy server on %s", p.config.Listen)
 
 	// 创建HTTP服务器
 	server := &http.Server{
@@ -122,19 +124,39 @@ func (p *Proxy) processRequest(ctx context.Context, w http.ResponseWriter, r *ht
 	return p.handleResponse(w, resp)
 }
 
+var (
+	replPath = strings.NewReplacer("/release", "", "/test", "")
+)
+
 // buildTargetURL builds the target URL for the proxy request
 func (p *Proxy) buildTargetURL(r *http.Request) (string, error) {
 	// 去掉环境前缀（针对腾讯云，如果包含的话，目前只用到了test和release）
-	path := strings.Replace(r.URL.Path, "/release", "", 1)
-	path = strings.Replace(path, "/test", "", 1)
+	path := replPath.Replace(r.URL.Path)
 
 	// 构建目标URL
-	// 优先级: X-Target-Host 头 > 配置的目标域名
+	// 优先级: X-Target-Host 头 > Host匹配Targets
 	var targetURL string
 	if targetHost := r.Header.Get("X-Target-Host"); targetHost != "" {
-		targetURL = "https://" + targetHost + path
+		if !strings.HasPrefix(targetHost, "https://") {
+			targetURL = "https://" + targetHost + path
+		} else {
+			targetURL = targetHost + path
+		}
+	} else if host := r.Host; host != "" {
+		// 尝试从Host中提取key并查找对应的target
+		// 域名规则 key-suffix.mydomain.net
+		key, _, _ := strings.Cut(host, "-")
+		if target, ok := p.config.Targets[key]; ok {
+			if !strings.HasPrefix(target, "https://") {
+				targetURL = "https://" + target + path
+			} else {
+				targetURL = target + path
+			}
+		} else {
+			return "", fmt.Errorf("target not found for host: %s", key)
+		}
 	} else {
-		targetURL = p.config.Target + path
+		return "", fmt.Errorf("no target host specified")
 	}
 
 	// 添加查询参数
@@ -225,12 +247,37 @@ func loadConfig() Config {
 	}
 
 	// 从命令行参数获取配置
-	flag.StringVar(&config.Target, "target", envOr("OPENAI_PROXY_TARGET", "https://api.openai.com"),
-		"The target domain to proxy.")
-	flag.StringVar(&config.Listen, "listen", envOr("OPENAI_PROXY_LISTEN", ":9000"),
+	flag.StringVar(&config.Listen, "listen", envOr("OPENAI_PROXY_LISTEN", ":9001"),
 		"The proxy listen address.")
+	// 解析 key:value 字符串并写入 targets 映射
+	parseTargets := func(input string, targets map[string]string) {
+		for _, pair := range strings.Split(input, ",") {
+			if pair == "" {
+				continue
+			}
+			parts := strings.SplitN(pair, ":", 2)
+			if len(parts) == 2 {
+				targets[parts[0]] = parts[1]
+			}
+		}
+	}
+
+	flag.Func("targets", "Mapping of proxy keys to target domains (e.g., key1:domain1.com,key2:domain2.com)", func(value string) error {
+		if config.Targets == nil {
+			config.Targets = make(map[string]string)
+		}
+		parseTargets(value, config.Targets)
+		return nil
+	})
 	flag.Parse()
 
+	// 从环境变量加载 targets
+	if targetsEnv := os.Getenv("OPENAI_PROXY_TARGETS"); targetsEnv != "" {
+		if config.Targets == nil {
+			config.Targets = make(map[string]string)
+		}
+		parseTargets(targetsEnv, config.Targets)
+	}
 	return config
 }
 
