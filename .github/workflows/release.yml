@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          args: --timeout 5m
+
+  release:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Linux AMD64
+        run: |
+          GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${GITHUB_REF_NAME}" -o dist/linux_amd64/openai-proxy .
+
+      - name: Build Linux ARM64
+        run: |
+          GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=${GITHUB_REF_NAME}" -o dist/linux_arm64/openai-proxy .
+
+      - name: Create Archives
+        run: |
+          mkdir -p dist
+          tar -cvJf openai-proxy-linux-amd64-${GITHUB_REF_NAME}.tar.xz -C dist/linux_amd64 openai-proxy
+          tar -cvJf openai-proxy-linux-arm64-${GITHUB_REF_NAME}.tar.xz -C dist/linux_arm64 openai-proxy
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            openai-proxy-linux-amd64-*.tar.xz
+            openai-proxy-linux-arm64-*.tar.xz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
