@@ -228,6 +228,20 @@ func (p *Proxy) streamResponse(w http.ResponseWriter, body io.ReadCloser) error 
 	}
 }
 
+func parseTargets(input string) (targets map[string]string) {
+	targets = make(map[string]string)
+	for _, pair := range strings.Split(input, ",") {
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) == 2 {
+			targets[parts[0]] = parts[1]
+		}
+	}
+	return
+}
+
 // loadConfig loads the application configuration from command line flags and environment variables
 func loadConfig() Config {
 	var config Config
@@ -250,33 +264,16 @@ func loadConfig() Config {
 	flag.StringVar(&config.Listen, "listen", envOr("OPENAI_PROXY_LISTEN", ":9001"),
 		"The proxy listen address.")
 	// 解析 key:value 字符串并写入 targets 映射
-	parseTargets := func(input string, targets map[string]string) {
-		for _, pair := range strings.Split(input, ",") {
-			if pair == "" {
-				continue
-			}
-			parts := strings.SplitN(pair, ":", 2)
-			if len(parts) == 2 {
-				targets[parts[0]] = parts[1]
-			}
-		}
-	}
 
 	flag.Func("targets", "Mapping of proxy keys to target domains (e.g., key1:domain1.com,key2:domain2.com)", func(value string) error {
-		if config.Targets == nil {
-			config.Targets = make(map[string]string)
-		}
-		parseTargets(value, config.Targets)
+		config.Targets = parseTargets(value)
 		return nil
 	})
 	flag.Parse()
 
 	// 从环境变量加载 targets
 	if targetsEnv := os.Getenv("OPENAI_PROXY_TARGETS"); targetsEnv != "" {
-		if config.Targets == nil {
-			config.Targets = make(map[string]string)
-		}
-		parseTargets(targetsEnv, config.Targets)
+		config.Targets = parseTargets(targetsEnv)
 	}
 	return config
 }
