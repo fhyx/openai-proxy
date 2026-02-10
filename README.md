@@ -142,14 +142,16 @@ zip openai-proxy.zip main scf_bootstrap
 ### Nginx 配置（流式响应支持）
 
 ```nginx
+
+server_name key1.myproxy.net key2.myproxy.net;
+
 location / {
     proxy_pass http://127.0.0.1:9000;
     proxy_buffering off;
     proxy_cache off;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
 }
+
 ```
 
 ## 请求示例
