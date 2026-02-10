@@ -41,16 +41,6 @@ export OPENAI_PROXY_TARGETS=oa:api.openai.com,azure:your-azure.openai.azure.com
 ./openai-proxy
 ```
 
-### Docker 部署
-
-```bash
-docker run -d \
-  --name openai-proxy \
-  -p 9000:9000 \
-  -e OPENAI_PROXY_LISTEN=:9000 \
-  -e OPENAI_PROXY_TARGETS=oa:api.openai.com \
-  openai-proxy
-```
 
 ## 多目标路由配置
 
