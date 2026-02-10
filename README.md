@@ -1,94 +1,204 @@
-# GO-OPENAI-PROXY
+# OpenAI Proxy
 
-基于 Go 实现的 OpenAI API HTTP 代理
+基于 Go 实现的 OpenAI API HTTP 代理，支持多目标路由和流式响应。
 
-> 想要快速体验，将 OpenAI API 调用域名从默认的 `api.openai.com` 调整为 `proxy.geekai.co` 即可。你可以在这里预览演示效果：[演示应用](https://geekai.co/dati?invite_code=S564yq)。
+## 功能特性
 
-### 切换到 Azure OpenAI
+- **多目标代理**: 支持通过配置文件或命令行同时代理多个目标服务
+- **Host 路由**: 根据请求 Host 自动路由到对应的目标服务
+- **流式响应**: 完美支持 ChatGPT 流式响应
+- **跨平台**: 支持 Linux/macOS/Windows，适配云函数部署
+- **零依赖**: 仅使用 Go 标准库
 
-默认在 9000 端口代理 OpenAI API，要想切换到 Azure OpenAI API，可以在 `scf_bootstrap` 的启动命令中添加域名参数来指定你的 Azure OpenAI API Endpoint:
+## 快速开始
 
-```bash
-./dist/linux_amd64/openai-proxy -target=your-azure-openai-endpoint
-```
-
-如果 9000 端口被占用，可以通过 `-listen=:9001` 指定其他端口。
-
-### 也可使用环境变量来设定参数
-
-```plain
-OPENAI_PROXY_LISTEN=:9000
-OPENAI_PROXY_TARGET=https://api.openai.com
-```
+### 安装运行
 
 ```bash
-OPENAI_PROXY_LISTEN=:1234 ./openai-proxy
+# 编译
+make
+
+# 运行（默认监听 9001 端口）
+./openai-proxy
+
+# 指定监听端口
+./openai-proxy -listen=:9000
+
+# 指定代理目标
+./openai-proxy -targets=openai:api.openai.com
 ```
 
-### 代理任意全球域名
+### 使用环境变量
 
-这个工具最早是为 OpenAI 代理而生，但实际上现在已经可以支持通过一个入口代理任意域名，只需要在发起发起代理请求的时候通过 `X-Target-Host` 设置你想要代理的域名（不带 `http(s)://` 前缀）即可，优先级是`请求头>命令行参数>默认值`：
+```bash
+# 设置监听地址
+export OPENAI_PROXY_LISTEN=:9000
 
-```go
-req.Header.Set("x-target-host", "api.open.ai")
+# 设置代理目标（支持多个，逗号分隔，key 是子域名，value 是目标域名）
+export OPENAI_PROXY_TARGETS=oa:api.openai.com,azure:your-azure.openai.azure.com
+
+# 运行
+./openai-proxy
 ```
+
+### Docker 部署
+
+```bash
+docker run -d \
+  --name openai-proxy \
+  -p 9000:9000 \
+  -e OPENAI_PROXY_LISTEN=:9000 \
+  -e OPENAI_PROXY_TARGETS=oa:api.openai.com \
+  openai-proxy
+```
+
+## 多目标路由配置
+
+### 配置文件方式
+
+```bash
+# 格式: key:domain
+# - key: 自定义域名的子域名（如 oa、azure 等）
+# - domain: 代理目标域名（代码会自动添加 https:// 前缀）
+./openai-proxy -targets=oa:api.openai.com,azure:your-azure.openai.azure.com
+```
+
+例如：
+- 配置 `oa:api.openai.com`
+- 访问 `oa.mydomain.com` → 转发到 `https://api.openai.com`
+
+### Host 路由规则
+
+请求会根据 Host 前缀自动路由到对应目标：
+
+```
+# 配置: -targets=oa:api.openai.com,azure:your-azure.openai.azure.com
+
+# 请求 oa.mydomain.com → 路由到 https://api.openai.com
+# 请求 azure.mydomain.com → 路由到 https://your-azure.openai.azure.com
+
+curl -X POST https://oa.mydomain.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+### 请求头方式覆盖
+
+可以通过 `X-Target-Host` 请求头临时指定目标（优先级最高）：
+
+```bash
+curl -X POST https://proxy.example.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Target-Host: api.openai.com" \  # 不需要写 https://，会自动添加
+  -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+## 配置选项
+
+### 命令行参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `-listen` | `:9001` | 监听地址和端口 |
+| `-targets` | - | 目标映射表，格式: `key:domain.com` |
+
+### 环境变量
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `OPENAI_PROXY_LISTEN` | `:9001` | 监听地址 |
+| `OPENAI_PROXY_TARGETS` | - | 目标映射表 |
+| `ENV` | - | 设置为 `local` 启用本地测试模式 |
+| `HTTP_PROXY` / `http_proxy` | - | HTTP 代理地址（本地模式） |
+
+### 本地测试模式
+
+设置 `ENV=local` 可启用本地代理测试：
+
+```bash
+ENV=local ./openai-proxy
+```
+
+此时会使用默认代理 `http://127.0.0.1:10809` 进行测试。
+
+## 编译部署
 
 ### 手动编译
 
-编译成本地版
 ```bash
+# 编译本地版本
 make
-```
-或直接编译成Linux版
-```bash
+
+# 编译指定平台版本
 make dist/linux_amd64/openai-proxy
+make dist/darwin_arm64/openai-proxy
+
+# 编译所有平台版本
+make dist
 ```
 
-### 编译打包（限Linux）
-
-你可以修改源代码调整代理逻辑，然后编译打包进行部署：
+### 云函数部署
 
 ```bash
-./build.sh
+# 编译 Linux AMD64 版本
+GOOS=linux GOARCH=amd64 go build -o main main.go
+
+# 打包
+zip openai-proxy.zip main scf_bootstrap
 ```
 
-此命令需要本地安装[go开发环境](https://go.dev/)，如果不想本地安装 go 环境进行编译打包，可以直接下载根据最新源代码编译打包好的 `openai-proxy.zip`：[Releases](https://github.com/geekr-dev/openai-proxy/releases)
+部署到腾讯云函数、阿里云函数或 AWS Lambda 时，上传打包好的 zip 文件即可。
 
-### 部署测试
+### Nginx 配置（流式响应支持）
 
-> 支持部署到腾讯/阿里云函数、AWS lambda 函数以及任意云服务器，以下以腾讯云函数为例进行演示。
-
-然后在腾讯云云函数代码管理界面上传打包好 zip 包即可完成部署：
-
-![](https://image.gstatics.cn/2023/03/06/image-20230306171340547.png)
-
-你可以通过腾讯云云函数提供的测试工具进行测试，也可以本地通过 curl/postman 进行测试，使用的时候只需要将 `api.openai.com` 替换成代理域名 `proxy.geekai.co` 即可：
- 
-![](https://geekr.gstatics.cn/wp-content/uploads/2023/03/image-38.png)
-
-你可以选择自己搭建，也可以直接使用我提供的代理域名 `proxy.geekai.co`，反正是免费的。关于代理背后的原理，可以看我在极客书房发布的这篇教程：[国内无法调用 OpenAI 接口的解决办法](https://geekr.dev/posts/chatgpt-website-by-laravel-10#toc-5)。
-
-本地调试走VPN的话可以设置环境变量 `ENV=local`，然后直连 `api.openai.com`：
-
-```go
-// 本地测试通过代理请求 OpenAI 接口
-if os.Getenv("ENV") == "local" {
-    proxyURL, _ := url.Parse("http://127.0.0.1:10809")
-    client.Transport = &http.Transport{
-        Proxy:           http.ProxyURL(proxyURL),
-        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-    }
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:9000;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
 }
 ```
-### 流式响应支持
 
-这个源代码本身是支持 stream 流式响应代理的，但目前很多云函数并不支持分块流式传输。所以，如果你需要实现流式响应，可以把编译后的二进制文件 `main` 丢到任意海外云服务器运行，这样就变成支持流式响应的 OpenAI HTTP 代理了，如果你不想折腾，可以使用我这边提供的 `proxy.geekai.co` 作为代理进行测试：
+## 请求示例
 
-<img width="965" alt="image" src="https://user-images.githubusercontent.com/114386672/225609817-ca5c106b-22d4-4ae9-b3df-ca2c46d56843.png">
+### ChatGPT 流式调用
 
-如果你是通过 Nginx 这种反向代理对外提供服务，记得通过如下配置项将默认缓冲和缓存关掉才会生效：
-
+```bash
+curl -X POST https://your-proxy.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [{"role": "user", "content": "讲个笑话"}],
+    "stream": true
+  }'
 ```
-proxy_buffering off;
-proxy_cache off;
+
+### Azure OpenAI
+
+```bash
+curl -X POST https://azure.your-proxy.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "api-key: $AZURE_API_KEY" \
+  -d '{
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
 ```
+
+## 技术规格
+
+| 项目 | 规格 |
+|------|------|
+| Go 版本 | 1.17+ |
+| 并发模型 | Go goroutine |
+| 连接池 | MaxIdleConns: 100, MaxIdleConnsPerHost: 20 |
+| 空闲超时 | 90秒 |
+| 流式缓冲区 | 1024字节 |
+| 日志格式 | `[PROXY] YYYY/MM/DD HH:MM:SS message` |
+
+## License
+
+MIT
